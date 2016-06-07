@@ -187,7 +187,7 @@ These symbols appear in the ``head`` field of ``Expr``\s in lowered form.
 Method
 ~~~~~~
 
-A unique'd container describing the shared metadata for a single (unspecialized) method.
+A unique'd container describing the shared metadata for a single method.
 
 ``name``, ``module``, ``file``, ``line``, ``sig`` - Metadata to uniquely identify the method
     for the computer and the human
@@ -204,6 +204,8 @@ A unique'd container describing the shared metadata for a single (unspecialized)
     required by compression of the AST, type-inference, or the generation of native code.
 
 ``nargs``, ``isva``, ``called``, ``isstaged`` - Descriptive bit-fields for the source code of this Method.
+
+``min-age`` / ``max-age`` - The range of world ages for which this method is visible.
 
 
 MethodInstance
@@ -230,6 +232,8 @@ See especially :ref:`devdocs-locks` for important details on how to modify these
     or other information about the inference result such as a constant return value
     may be put here (if ``jlcall_api == 2``), or it could be set to `nothing`
     to just indicate ``rettype`` is inferred
+
+``min-age`` / ``max-age`` - The range of world ages for which this method instance is valid.
 
 ``ftpr`` - The generic jlcall entry point
 

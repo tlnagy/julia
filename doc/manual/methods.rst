@@ -265,6 +265,119 @@ Julia its ability to abstractly express high-level algorithms decoupled
 from implementation details, yet generate efficient, specialized code to
 handle each case at run time.
 
+Redefining Methods
+------------------
+
+When redefining a method or adding new methods,
+it is important to realize that these changes don't take effect immediately.
+This is key to Julia's ability to statically infer and compile code to run fast,
+without the usual JIT tricks and overhead.
+Indeed, any new method definition won't be visible to the current runtime environment,
+including Tasks and Threads, or any previously defined ``@generated`` functions.
+Let's start with an example to see what this means::
+
+    julia> function tryeval()
+               @eval newfun() = 1
+               newfun()
+           end
+    tryeval (generic function with 1 method)
+
+    julia> tryeval()
+    ERROR: MethodError: no method matching newfun()
+    The applicable method may be too new: running in world age xxxx1, while current world is xxxx2.
+    Closest candidates are:
+      newfun() at none:1 (method too new to be called from this world context.)
+     in tryeval() at none:1
+     ...
+
+     julia> newfun()
+     1
+
+In this example, observe that the new definition for ``newfun`` has been created,
+but can't be immediately called. Future calls to ``newfun`` from the REPL work as expected.
+But future calls to ``tryeval`` will continue to see the definition of ``newfun`` as it was
+*at the previous statement at the REPL*. You may want to try this for yourself to see how it works.
+
+The world age counter is a monotonically increasing value that tracks each delayed operation.
+This allows describing "the set of method definitions visible to a runtime environment"
+as simply a number.
+It also allows comparing the methods available in two worlds just by comparing their ordinal value.
+In the example above, we see that the "current world" (in which the method ``newfun()`` exists),
+is one greater than the runtime world that was fixed when the execution of ``tryeval`` started.
+
+Sometimes it is necessary to get around this (for example, if you are implementing the above REPL).
+Well, don't despair, since there's an easy solution: just call ``eval`` a second time.
+For example, here we create a zero-argument closure over ``ans`` and ``eval`` a call to it:
+
+.. doctest::
+
+    julia> function tryeval2()
+               ans = (@eval newfun2() = 1)
+               res = eval(Expr(:call,
+                   function()
+                       return ans() + 1
+                   end))
+                return res
+           end
+    tryeval2 (generic function with 1 method)
+
+    julia> tryeval2()
+    2
+
+Finally, let's take a look at some more complex examples where this rule comes into play.
+
+.. doctest::
+
+    julia> # initially f(x) has one definition:
+
+    julia> f(x) = "original definition";
+
+    julia> # start some other operations that use f(x):
+
+    julia> g(x) = f(x);
+
+    julia> t = @async f(wait()); yield();
+
+    julia> @generated gen1(x) = f(x);
+
+    julia> @generated gen2(x) = :(f(x));
+
+    julia> # now we add some new definitions for f(x):
+
+    julia> f(x::Int) = "definition for Int";
+
+    julia> f(x::Type{Int}) = "definition for Type{Int}";
+
+    julia> # and compare how these results differ:
+
+    julia> f(1)
+    "definition for Int"
+
+    julia> g(1)
+    "definition for Int"
+
+    julia> wait(schedule(t, 1))
+    "original definition"
+
+    julia> t = @async f(wait()); yield();
+
+    julia> wait(schedule(t, 1))
+    "definition for Int"
+
+    julia> gen1(1)
+    "original definition"
+
+    julia> gen2(1)
+    "definition for Int"
+
+    julia> # each method of a generated function has its own view of defined functions:
+
+    julia> @generated gen1(x::Real) = f(x);
+
+    julia> gen1(1)
+    "definition for Type{Int}"
+
+
 Method Ambiguities
 ------------------
 
