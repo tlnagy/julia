@@ -128,8 +128,11 @@ script:
     - export JULIA_CPU_CORES=2 && export JULIA_TEST_MAXRSS_MB=600 && cd /tmp/julia/share/julia/test &&
         /tmp/julia/bin/julia --check-bounds=yes runtests.jl $TESTSTORUN &&
         /tmp/julia/bin/julia --check-bounds=yes runtests.jl libgit2-online pkg
-    - cd `dirname $TRAVIS_BUILD_DIR` && mv julia2 julia &&
-        rm -rf julia/deps/scratch/julia-env &&
+    - cd `dirname $TRAVIS_BUILD_DIR` && mv julia2 julia
+    - cd $TRAVIS_BUILD_DIR && make -s $BUILDOPTS julia-genstdlib &&
+        (git diff --stat --exit-code doc/stdlib ||
+         (echo "Outdated files in doc/stdlib, please run make julia-genstdlib locally"; false))
+    - cd `dirname $TRAVIS_BUILD_DIR` && rm -rf julia/deps/scratch/julia-env &&
         rm -f julia/deps/scratch/libgit2-*/CMakeFiles/CMakeOutput.log
 # uncomment the following if failures are suspected to be due to the out-of-memory killer
 #    - dmesg
