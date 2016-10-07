@@ -22,6 +22,7 @@
    sort
    pkg
    dates
+   itertools
    test
    c
    libc
