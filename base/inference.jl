@@ -6,6 +6,13 @@ import Core: _apply, svec, apply_type, Builtin, IntrinsicFunction, MethodInstanc
 const MAX_TYPEUNION_LEN = 3
 const MAX_TYPE_DEPTH = 7
 
+immutable InferenceHooks
+    call
+
+    InferenceHooks(call) = new(call)
+    InferenceHooks() = new(nothing)
+end
+
 immutable InferenceParams
     # optimization
     optimize::Bool
@@ -18,13 +25,16 @@ immutable InferenceParams
     MAX_TUPLE_SPLAT::Int
     MAX_UNION_SPLITTING::Int
 
+    hooks::InferenceHooks
+
     # default values will be used for regular compilation, as the compiler calls typeinf_ext
     # without specifying, or allowing to override, the inference parameters
     InferenceParams(;optimize::Bool=true, inlining::Bool=inlining_enabled(), cached::Bool=true,
                     tupletype_len::Int=15, tuple_depth::Int=16,
-                    tuple_splat::Int=4, union_splitting::Int=4) =
+                    tuple_splat::Int=4, union_splitting::Int=4,
+                    hooks::InferenceHooks=InferenceHooks()) =
         new(optimize, inlining, cached, tupletype_len,
-            tuple_depth, tuple_splat, union_splitting)
+            tuple_depth, tuple_splat, union_splitting, hooks)
 
     # copy constructor for selectively overriding certain params
     InferenceParams(params::InferenceParams; kwargs...) =
@@ -33,6 +43,7 @@ immutable InferenceParams
                         tuple_depth=params.MAX_TUPLE_DEPTH,
                         tuple_splat=params.MAX_TUPLE_SPLAT,
                         union_splitting=params.MAX_UNION_SPLITTING,
+                        hooks=params.hooks,
                         kwargs...)
 end
 
@@ -1092,6 +1103,15 @@ end
 argtypes_to_type(argtypes::Array{Any,1}) = Tuple{map(widenconst, argtypes)...}
 
 function abstract_call(f::ANY, fargs, argtypes::Vector{Any}, vtypes::VarTable, sv::InferenceState)
+    if sv.params.hooks.call != nothing
+        hack = sv.params.hooks.call(f, argtypes_to_type(argtypes))
+        if hack != nothing
+            println("NOTICE: overriding abstract_call of ", f, " with ", hack)
+            f = hack
+            argtypes[1] = typeof(f)
+        end
+    end
+
     if is(f,_apply)
         length(fargs)>1 || return Any
         aft = argtypes[2]
@@ -3097,6 +3117,19 @@ function inlining_pass(e::Expr, sv::InferenceState)
         f = nothing
         if !( isleaftype(ft) || ft<:Type )
             return (e, stmts)
+        end
+    end
+
+    if sv.params.hooks.call != nothing
+        argtypes = Vector{Any}(length(e.args))
+        argtypes[1] = ft
+        argtypes[2:end] = map(a->exprtype(a, sv.src, sv.mod), e.args[2:end])
+
+        hack = sv.params.hooks.call(f, argtypes_to_type(argtypes))
+        if hack != nothing
+            println("NOTICE: overriding inlining_pass of ", f, " with ", hack)
+            f = hack
+            ft = typeof(hack)
         end
     end
 
